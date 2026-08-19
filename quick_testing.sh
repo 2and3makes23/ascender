@@ -14,43 +14,54 @@ UV_INSTALL_DOCS_URL="https://docs.astral.sh/uv/getting-started/installation/"
 # ---------------------------------------------------------------------------
 print_help() {
     cat <<EOF
-quick_testing.sh -- set up (or reuse) the venv and run the SSO test suites.
+quick_testing.sh -- set up (or reuse) the test venv and run ascender's pytest suites.
 
-Sets up a local Python virtual environment, installs every dependency needed
-to run the pytest suites covering the changes on the "accelerate_oidc_login"
-branch, and (by default) runs those suites.
+Sets up a local Python virtual environment, installs all dependencies needed
+by the ascender Python packages and their tests, and (by default) runs the
+"all" test suite -- the same set the Makefile's TEST_DIRS covers:
 
-The branch changes live in:
-  awx/sso/social_pipeline.py   - merged OIDC org/team reconciliation step
-  awx/settings/defaults.py     - default SOCIAL_AUTH_PIPELINE uses the merged step
-plus tests under awx/sso/tests/{unit,functional}.
-
-Tests exercised by this script:
-  awx/sso/tests/unit                           - import check + default-pipeline wiring
-  .../test_social_pipeline.py                  - legacy wrapper behavior + new merged step
-  .../test_common.py                           - shared reconcile/create/get_orgs_by_ids funcs
-  .../test_ldap.py                             - LDAP regression (same shared desired-state path)
-  .../test_backends.py                         - LDAP/social backend regression (same shared path)
+  all: awx/main/tests/{unit,functional}  awx/conf/tests  awx/sso/tests
 
 Usage:
-  bash quick_testing.sh                          # ensure env + run the relevant tests
+  bash quick_testing.sh                          # ensure env + run the full suite
+  bash quick_testing.sh --unit                   # run only the unit test trees
+  bash quick_testing.sh --pkg conf               # run the awx/conf package tests
+  bash quick_testing.sh --no-update --sso        # quick repeat: reuse the venv, sso only
   bash quick_testing.sh --no-run                 # only create/upgrade the environment
-  bash quick_testing.sh --no-update              # run the tests using the existing venv
-                                                 # (skip all env setup/update, fast repeats)
+  bash quick_testing.sh --list                   # list the available suites and exit
   bash quick_testing.sh -- <pytest args>         # ensure env + run tests with extra args
-  bash quick_testing.sh --uv                     # force the uv path (also if uv is present)
-  bash quick_testing.sh --legacy                 # force the system-python venv path
-  bash quick_testing.sh --help                   # show this help and exit
+  bash quick_testing.sh --uv / --legacy          # force the provisioning path
+  bash quick_testing.sh --help                   # show this help text and exit
+
+Test suite selection (last --<lane> wins; default: --all):
+  --all           entire project, see above
+  --unit          awx/main/tests/unit awx/conf/tests/unit awx/sso/tests/unit
+  --functional    awx/main/tests/functional awx/conf/tests/functional awx/sso/tests/functional
+  --main          the awx/main package (unit + functional)
+  --conf          the awx/conf package (unit + functional)
+  --sso           the awx/sso package (unit + functional)
+  --pkg <name>    single package: main, conf or sso (same as the matching lane)
+  TEST_DIRS=...   explicit space-separated pytest paths, overrides any lane
+
+Coverage check: every run verifies that the "all" lane still covers every
+package that ships tests in this checkout (awx/*/tests/{unit,functional}).
+If a new package grows a test tree that the manifest does not include, a
+warning is printed; --strict-coverage turns that warning into exit 1 (CI).
 
 Options:
   --help, -h          Print this help text and exit.  Wins over all other flags.
+  --list              Print the available suites and exit.
+  --all/--unit/--functional/--main/--conf/--sso
+                      Select the test suite to run (see above).  Default: --all.
+  --pkg <name>        Select a single package's tests (main, conf or sso).
+  --strict-coverage   Fail (exit 1) if the "all" lane no longer covers every
+                      package that ships tests.
   --no-run            Only create/upgrade the environment; do not run the tests
                       (prints the exact command to run them later).
   --no-update         Skip all environment setup/update (venv creation, package
                       installs, awx editable install, sanity check) and go
                       straight to the test run.  Requires an existing, seeded
-                      venv; errors out with a hint if one is missing.  Pairs
-                      well with --no-run to inspect what would run.
+                      venv; errors out with a hint if one is missing.
   --uv / --legacy     Override the provisioning path auto-detection.  The chosen
                       path is kept across runs: an existing venv whose Python
                       version does not match the requested one is recreated
@@ -58,6 +69,7 @@ Options:
   --, then args       Anything after this is passed through to pytest verbatim.
 
 Environment overrides:
+  TEST_DIRS          explicit pytest paths to run (overrides any suite selection)
   UV_PYTHON          uv-managed Python version to use (default: 3.12)
   PYTHON3            specific interpreter for the no-uv fallback
                      (default: autodetect 3.12, then 3.11/3.13/3.10/3.9)
@@ -78,32 +90,175 @@ Notes:
   venv is used as a fallback.  The preflight checks the C toolchain plus the
   OpenLDAP/Cyrus SASL headers needed to compile python-ldap from source (and,
   when NO_BINARY=1, the libffi/libpq headers).
-  The SSO tests run under awx/main/tests/settings_for_test (SQLite + in-memory
+  The tests run under awx/main/tests/settings_for_test (SQLite + in-memory
   Channels, set by pytest.ini), so no Postgres/Redis are required.  A fresh
   awx_test.sqlite3 is created each run so pytest-django rebuilds the test DB.
+  Excluded by design: awx/main/tests/live (needs live external infra),
+  awx/main/tests/manual (case study), and awxkit (its own tox/venv, run via
+  'make test').
 EOF
 }
 
+print_suites() {
+    echo "Available test suites (default: all):"
+    echo
+    printf '  %-14s %s\n' "--all"       "${SUITES[all]}"
+    printf '  %-14s %s\n' "--unit"      "${SUITES[unit]}"
+    printf '  %-14s %s\n' "--functional" "${SUITES[functional]}"
+    printf '  %-14s %s\n' "--main"      "${SUITES[main]}"
+    printf '  %-14s %s\n' "--conf"      "${SUITES[conf]}"
+    printf '  %-14s %s\n' "--sso"       "${SUITES[sso]}"
+    printf '  %-14s %s\n' "--pkg <name>" "main, conf or sso (same as the matching lane)"
+    echo
+    echo "Or set TEST_DIRS to any explicit space-separated pytest paths."
+}
+
 # ---------------------------------------------------------------------------
-# Parse CLI flags before anything else, so --uv/--legacy/--no-update never
-# leak into the positional args (--no-run / -- <pytest args>) handled later.
-# FORCE_PATH can be "", "uv" or "legacy"; last one wins.
+# Test suite manifest (the curated set): lane name -> pytest paths.  The
+# "all" lane is the default and must keep covering every package that ships
+# tests; check_suite_coverage() verifies that on every run.
+# ---------------------------------------------------------------------------
+declare -A SUITES=(
+    [all]="awx/main/tests/unit awx/main/tests/functional awx/conf/tests awx/sso/tests"
+    [unit]="awx/main/tests/unit awx/conf/tests/unit awx/sso/tests/unit"
+    [functional]="awx/main/tests/functional awx/conf/tests/functional awx/sso/tests/functional"
+    [main]="awx/main/tests/unit awx/main/tests/functional"
+    [conf]="awx/conf/tests"
+    [sso]="awx/sso/tests"
+)
+
+# Emit the leaf "test tree" paths under each given path: {unit,functional}
+# subdirs when present, otherwise the path itself.  Paths are relative to
+# BASE_DIR and sorted.
+# (Buffered via an array instead of a piped loop: under `set -eo pipefail` a
+# short-circuited `[[ -d ]] && echo` would leave a non-zero status on the loop
+# subshell and kill the pipeline.)
+expand_test_trees() {
+    local path out=()
+    for path in "$@"; do
+        if [[ -d "${BASE_DIR}/${path}/unit" || -d "${BASE_DIR}/${path}/functional" ]]; then
+            [[ -d "${BASE_DIR}/${path}/unit" ]] && out+=("${path}/unit")
+            [[ -d "${BASE_DIR}/${path}/functional" ]] && out+=("${path}/functional")
+        else
+            out+=("${path}")
+        fi
+    done
+    printf '%s\n' "${out[@]}" | sort
+}
+
+# Every "awx/<pkg>/tests" tree present in the working tree, coarse granularity.
+discover_test_trees() {
+    local pkg
+    for pkg in "${BASE_DIR}"/awx/*/tests; do
+        [[ -d "${pkg}" ]] || continue
+        expand_test_trees "${pkg#"${BASE_DIR}/"}"
+    done
+}
+
+# Verify the "all" lane still covers every package that ships tests.  Warns by
+# default; --strict-coverage (STRICT_COVERAGE=1) turns drift into exit 1.
+check_suite_coverage() {
+    local -A discovered=() listed=()
+    local tree missing=() extra=() note=""
+    while IFS= read -r tree; do discovered["${tree}"]=1; done < <(discover_test_trees)
+    while IFS= read -r tree; do listed["${tree}"]=1; done < <(expand_test_trees ${SUITES[all]})
+
+    for tree in "${!discovered[@]}"; do
+        [[ -n "${listed[${tree}]+x}" ]] || extra+=("${tree}")
+    done
+    for tree in "${!listed[@]}"; do
+        [[ -n "${discovered[${tree}]+x}" ]] || missing+=("${tree}")
+    done
+
+    if [[ "${#missing[@]}" -eq 0 && "${#extra[@]}" -eq 0 ]]; then
+        return 0
+    fi
+
+    note="The 'all' test lane no longer covers every package with tests in this checkout."
+    if [[ "${STRICT_COVERAGE}" == "1" ]]; then
+        echo "Error: ${note}" >&2
+    else
+        echo "Warning: ${note}" >&2
+    fi
+    echo "Update the SUITES[all] entry in quick_testing.sh (or pass TEST_DIRS) to keep" >&2
+    echo "'all' complete." >&2
+    if [[ "${#extra[@]}" -gt 0 ]]; then
+        echo "Test trees NOT covered by 'all':" >&2
+        printf '  - %s\n' "${extra[@]}" | sort >&2
+    fi
+    if [[ "${#missing[@]}" -gt 0 ]]; then
+        echo "'all' lists trees that no longer exist:" >&2
+        printf '  - %s\n' "${missing[@]}" | sort >&2
+    fi
+    echo "  Re-run with --strict-coverage to fail instead of warning." >&2
+    if [[ "${STRICT_COVERAGE}" == "1" ]]; then
+        return 1
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Parse CLI flags before anything else, so --uv/--legacy/--no-update/suite
+# choices never leak into the positional args (--no-run / -- <pytest args>)
+# handled later.  FORCE_PATH can be "", "uv" or "legacy"; last one wins, as
+# does the last suite-selection flag.
 # ---------------------------------------------------------------------------
 FORCE_PATH=""
 NO_UPDATE=0
+STRICT_COVERAGE=0
+LANE_NAME="all"
 POSITIONAL=()
-for arg in "$@"; do
-    case "${arg}" in
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --help|-h)
             print_help
             exit 0
             ;;
-        --uv) FORCE_PATH="uv" ;;
-        --legacy) FORCE_PATH="legacy" ;;
-        --no-update) NO_UPDATE=1 ;;
-        *) POSITIONAL+=("${arg}") ;;
+        --list)
+            print_suites
+            exit 0
+            ;;
+        --uv) FORCE_PATH="uv" ; shift ;;
+        --legacy) FORCE_PATH="legacy" ; shift ;;
+        --no-update) NO_UPDATE=1 ; shift ;;
+        --strict-coverage) STRICT_COVERAGE=1 ; shift ;;
+        --all) LANE_NAME="all" ; shift ;;
+        --unit) LANE_NAME="unit" ; shift ;;
+        --functional) LANE_NAME="functional" ; shift ;;
+        --main) LANE_NAME="main" ; shift ;;
+        --conf) LANE_NAME="conf" ; shift ;;
+        --sso) LANE_NAME="sso" ; shift ;;
+        --pkg)
+            shift
+            if [[ $# -eq 0 ]]; then
+                echo "Error: --pkg requires a package name (main, conf or sso)." >&2
+                exit 1
+            fi
+            LANE_NAME="$1"
+            shift
+            ;;
+        --)
+            shift
+            POSITIONAL+=("$@")
+            break
+            ;;
+        *) POSITIONAL+=("$1") ; shift ;;
     esac
 done
+
+if [[ -n "${TEST_DIRS:-}" ]]; then
+    read -r -a TEST_PATHS <<< "${TEST_DIRS}"
+    SUITE_LABEL="TEST_DIRS"
+elif [[ -n "${SUITES[${LANE_NAME}]:-}" ]]; then
+    read -r -a TEST_PATHS <<< "${SUITES[${LANE_NAME}]}"
+    SUITE_LABEL="${LANE_NAME}"
+else
+    echo "Error: unknown test suite or package '${LANE_NAME}'." >&2
+    echo "Known suites: all, unit, functional, main, conf, sso." >&2
+    exit 1
+fi
+
+check_suite_coverage
 
 if [[ "${NO_UPDATE}" != "1" ]]; then
 
@@ -413,9 +568,8 @@ echo "Installing requirements.txt / requirements_git.txt / requirements_dev.txt"
 # 7. Editable install of the awx package itself
 #
 #    Required so that `import awx` resolves to THIS checkout (and tests always
-#    exercise the working tree, including the branch's social_pipeline.py /
-#    defaults.py changes).  Without it the import smoke tests and every
-#    functional test fail immediately.
+#    exercise the working tree, including any uncommitted changes).  Without it
+#    the import smoke tests and every functional test fail immediately.
 # ---------------------------------------------------------------------------
 echo "Installing awx in editable mode"
 (
@@ -459,10 +613,10 @@ fi
 #      - A fresh SQLite test DB: pytest-django's --reuse-db keeps an existing
 #        awx_test.sqlite3 across runs, but the ServiceID row that the
 #        dab_resource_registry post_save signals require is created by a data
-#        migration that --nomigrations skips.  awx/sso/tests/functional/conftest.py
-#        (mirroring awx/main/tests/functional/conftest.py) recreates that row via
-#        a post_migrate hook the FIRST time the test DB is created, so we start
-#        from a clean file every run.
+#        migration that --nomigrations skips.  awx/main/tests/functional/conftest.py
+#        (mirrored by awx/sso/tests/functional/conftest.py) recreates that row
+#        via a post_migrate hook the FIRST time the test DB is created, so we
+#        start from a clean file every run.
 # ---------------------------------------------------------------------------
 RUN_TESTS=1
 EXTRA_ARGS=()
@@ -470,24 +624,15 @@ if [[ "${#POSITIONAL[@]}" -gt 0 && "${POSITIONAL[0]}" == "--no-run" ]]; then
     RUN_TESTS=0
     POSITIONAL=("${POSITIONAL[@]:1}")
 fi
-if [[ "${#POSITIONAL[@]}" -gt 0 && "${POSITIONAL[0]}" == "--" ]]; then
-    EXTRA_ARGS=("${POSITIONAL[@]:1}")
-else
-    EXTRA_ARGS=("${POSITIONAL[@]}")
-fi
+EXTRA_ARGS=("${POSITIONAL[@]}")
 
 export AWX_LOGGING_MODE="${AWX_LOGGING_MODE:-stdout}"
 
-TEST_PATHS=(
-    awx/sso/tests/unit
-    awx/sso/tests/functional/test_social_pipeline.py
-    awx/sso/tests/functional/test_common.py
-    awx/sso/tests/functional/test_ldap.py
-    awx/sso/tests/functional/test_backends.py
-)
+# TEST_PATHS / SUITE_LABEL were resolved from the lane selection (or TEST_DIRS)
+# before the environment was set up.
 
 if [[ "${RUN_TESTS}" == "1" ]]; then
-    echo "Running relevant test suites..."
+    echo "Running test suite '${SUITE_LABEL}'..."
     (
         cd "${BASE_DIR}"
         rm -f awx_test.sqlite3
