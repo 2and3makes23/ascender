@@ -1,72 +1,111 @@
 #!/usr/bin/env bash
-#
-# ensure_test_requirements.sh
-#
-# Sets up a local Python virtual environment, installs every dependency needed
-# to run the pytest suites covering the changes on the "accelerate_oidc_login"
-# branch, and (by default) runs those suites.
-#
-# The branch changes live in:
-#   awx/sso/social_pipeline.py   - merged OIDC org/team reconciliation step
-#   awx/settings/defaults.py     - default SOCIAL_AUTH_PIPELINE uses the merged step
-# plus tests under awx/sso/tests/{unit,functional}.
-#
-# Tests exercised by this script:
-#   awx/sso/tests/unit                           - import check + default-pipeline wiring
-#   .../test_social_pipeline.py                  - legacy wrapper behavior + new merged step
-#   .../test_common.py                           - shared reconcile/create/get_orgs_by_ids funcs
-#   .../test_ldap.py                             - LDAP regression (same shared desired-state path)
-#   .../test_backends.py                         - LDAP/social backend regression (same shared path)
-#
-# Usage:
-#   bash ensure_test_requirements.sh               # ensure env + run the relevant tests
-#   bash ensure_test_requirements.sh --no-run      # only create/upgrade the environment
-#   bash ensure_test_requirements.sh -- <pytest args>   # ensure env + run tests with extra args
-#   bash ensure_test_requirements.sh --uv          # force the uv path (also if uv is present)
-#   bash ensure_test_requirements.sh --legacy      # force the system-python venv path
-#
-# The script normally auto-detects: uv is preferred, and a system-Python venv
-# is used as a fallback.  --uv/--legacy override that detection.  The chosen
-# path is then kept across runs: an existing venv whose Python version does not
-# match the requested one (e.g. a leftover from the legacy fallback) is
-# recreated automatically, so runs "stay on" the selected path.
-#
-# Optional environment overrides:
-#   UV_PYTHON       uv-managed Python version to use (default: 3.12)
-#   PYTHON3         specific interpreter to use for the no-uv fallback
-#                   (default: autodetect 3.12, then 3.11/3.13/3.10/3.9)
-#   VENV_DIR        venv location (default: ./venv)
-#   SRC_ONLY_PKGS   packages forced to build from source when NO_BINARY=1
-#                   (default: cffi,pycparser,psycopg,twilio, matching the Makefile)
-#   NO_BINARY       set to "1" to force source builds for SRC_ONLY_PKGS (replicates
-#                   the Makefile/CI; needs libffi-dev + libpq-dev).  Default "0"
-#                   allows binary wheels everywhere (fast local installs)
-#   SKIP_PREREQ_CHECK  set to "1" to bypass the system build-dependency preflight
-#   AWX_LOGGING_MODE  logging mode for the test runs (default: stdout, since the
-#                   'file' mode needs /var/log/tower which local boxes lack)
 
 set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${VENV_DIR:-${BASE_DIR}/venv}"
+VENV_PYTHON="${VENV_DIR}/bin/python"
 
 # uv's official install documentation, referenced when uv is not available.
 UV_INSTALL_DOCS_URL="https://docs.astral.sh/uv/getting-started/installation/"
 
 # ---------------------------------------------------------------------------
-# Parse CLI flags before anything else, so --uv/--legacy never leak into the
-# positional args (--no-run / -- <pytest args>) handled at the end.
+# --help output (usage, options, environment overrides, covered test suites)
+# ---------------------------------------------------------------------------
+print_help() {
+    cat <<EOF
+quick_testing.sh -- set up (or reuse) the venv and run the SSO test suites.
+
+Sets up a local Python virtual environment, installs every dependency needed
+to run the pytest suites covering the changes on the "accelerate_oidc_login"
+branch, and (by default) runs those suites.
+
+The branch changes live in:
+  awx/sso/social_pipeline.py   - merged OIDC org/team reconciliation step
+  awx/settings/defaults.py     - default SOCIAL_AUTH_PIPELINE uses the merged step
+plus tests under awx/sso/tests/{unit,functional}.
+
+Tests exercised by this script:
+  awx/sso/tests/unit                           - import check + default-pipeline wiring
+  .../test_social_pipeline.py                  - legacy wrapper behavior + new merged step
+  .../test_common.py                           - shared reconcile/create/get_orgs_by_ids funcs
+  .../test_ldap.py                             - LDAP regression (same shared desired-state path)
+  .../test_backends.py                         - LDAP/social backend regression (same shared path)
+
+Usage:
+  bash quick_testing.sh                          # ensure env + run the relevant tests
+  bash quick_testing.sh --no-run                 # only create/upgrade the environment
+  bash quick_testing.sh --no-update              # run the tests using the existing venv
+                                                 # (skip all env setup/update, fast repeats)
+  bash quick_testing.sh -- <pytest args>         # ensure env + run tests with extra args
+  bash quick_testing.sh --uv                     # force the uv path (also if uv is present)
+  bash quick_testing.sh --legacy                 # force the system-python venv path
+  bash quick_testing.sh --help                   # show this help and exit
+
+Options:
+  --help, -h          Print this help text and exit.  Wins over all other flags.
+  --no-run            Only create/upgrade the environment; do not run the tests
+                      (prints the exact command to run them later).
+  --no-update         Skip all environment setup/update (venv creation, package
+                      installs, awx editable install, sanity check) and go
+                      straight to the test run.  Requires an existing, seeded
+                      venv; errors out with a hint if one is missing.  Pairs
+                      well with --no-run to inspect what would run.
+  --uv / --legacy     Override the provisioning path auto-detection.  The chosen
+                      path is kept across runs: an existing venv whose Python
+                      version does not match the requested one is recreated
+                      automatically, so runs "stay on" the selected path.
+  --, then args       Anything after this is passed through to pytest verbatim.
+
+Environment overrides:
+  UV_PYTHON          uv-managed Python version to use (default: 3.12)
+  PYTHON3            specific interpreter for the no-uv fallback
+                     (default: autodetect 3.12, then 3.11/3.13/3.10/3.9)
+  VENV_DIR           venv location (default: ${BASE_DIR}/venv)
+  SRC_ONLY_PKGS      packages built from source when NO_BINARY=1
+                     (default: cffi,pycparser,psycopg,twilio, matching the Makefile)
+  NO_BINARY          "1" forces source builds for SRC_ONLY_PKGS (replicates the
+                     Makefile/CI; needs libffi-dev + libpq-dev).  Default "0"
+                     allows binary wheels everywhere (fast local installs)
+  SKIP_PREREQ_CHECK  "1" bypasses the system build-dependency preflight
+  AWX_LOGGING_MODE   logging mode for the test runs (default: stdout, since the
+                     'file' mode needs /var/log/tower which local boxes lack)
+
+Notes:
+  uv is preferred: it provisions a managed, stable Python (3.9-3.13, the
+  pinned dependency set is not tested against Python 3.14) and builds the venv
+  without relying on system ensurepip/pip.  Without uv, a legacy system-Python
+  venv is used as a fallback.  The preflight checks the C toolchain plus the
+  OpenLDAP/Cyrus SASL headers needed to compile python-ldap from source (and,
+  when NO_BINARY=1, the libffi/libpq headers).
+  The SSO tests run under awx/main/tests/settings_for_test (SQLite + in-memory
+  Channels, set by pytest.ini), so no Postgres/Redis are required.  A fresh
+  awx_test.sqlite3 is created each run so pytest-django rebuilds the test DB.
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Parse CLI flags before anything else, so --uv/--legacy/--no-update never
+# leak into the positional args (--no-run / -- <pytest args>) handled later.
 # FORCE_PATH can be "", "uv" or "legacy"; last one wins.
 # ---------------------------------------------------------------------------
 FORCE_PATH=""
+NO_UPDATE=0
 POSITIONAL=()
 for arg in "$@"; do
     case "${arg}" in
+        --help|-h)
+            print_help
+            exit 0
+            ;;
         --uv) FORCE_PATH="uv" ;;
         --legacy) FORCE_PATH="legacy" ;;
+        --no-update) NO_UPDATE=1 ;;
         *) POSITIONAL+=("${arg}") ;;
     esac
 done
+
+if [[ "${NO_UPDATE}" != "1" ]]; then
 
 # ---------------------------------------------------------------------------
 # 1. Choose the provisioning path: uv (featured) or the legacy system-python
@@ -255,8 +294,6 @@ fi
 #
 #    legacy: plain `python -m venv` from the selected system interpreter.
 # ---------------------------------------------------------------------------
-VENV_PYTHON="${VENV_DIR}/bin/python"
-
 if [[ "${USE_UV}" == "1" ]]; then
     # Keep the uv path stable across runs: if a venv exists but was created
     # with a different Python (e.g. a leftover 3.11rc1 from the legacy
@@ -390,6 +427,19 @@ echo "Installing awx in editable mode"
 # 8. Sanity check: awx must import from the venv
 # ---------------------------------------------------------------------------
 "${VENV_PYTHON}" -c "import awx; print('awx import OK')"
+
+fi  # (NO_UPDATE != 1) -- end of the venv setup/update block
+
+# ---------------------------------------------------------------------------
+# --no-update: the setup/update block above was skipped, so make sure the venv
+# actually exists and was seeded before running tests against it.
+# ---------------------------------------------------------------------------
+if [[ "${NO_UPDATE}" == "1" && ! -x "${VENV_PYTHON}" ]]; then
+    echo "Error: --no-update requires an existing venv at ${VENV_DIR}." >&2
+    echo "Run this script once WITHOUT --no-update to create and seed it, then" >&2
+    echo "use --no-update for quick repeat runs." >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # 9. Run the relevant tests (unless --no-run was given)
