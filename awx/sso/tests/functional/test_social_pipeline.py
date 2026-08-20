@@ -1,7 +1,7 @@
 import pytest
 import re
 
-from awx.sso.social_pipeline import _update_m2m_from_expression, update_user_org_team_mappings, update_user_orgs, update_user_teams
+from awx.sso.social_pipeline import _update_m2m_from_expression, update_user_org_team_mappings, update_user_orgs, update_user_teams, update_user_flags_by_group
 from awx.main.models import User, Team, Organization
 
 
@@ -434,3 +434,75 @@ class TestMergedPipelineStep:
         # Both entries manage the admin role; like the historical sequential
         # per-entry behavior, the later entry's removal wins.
         assert not org.admin_role.members.filter(pk=user.pk).exists()
+
+
+@pytest.mark.django_db
+class TestUpdateUserFlagsByGroup:
+    def test_user_not_in_settings_is_not_superuser(self):
+        user = User.objects.create(username='alice', last_name='foo', first_name='bar', email='alice@example.com')
+        backend = FakeMergedBackend(USER_FLAGS_BY_GROUP={'is_superuser': ['bob@example.com']})
+        update_user_flags_by_group(backend, None, user)
+        assert User.objects.get(pk=user.pk).is_superuser is False
+
+    def test_superuser_match_by_username(self):
+        user = User.objects.create(username='alice', last_name='foo', first_name='bar', email='alice@example.com')
+        backend = FakeMergedBackend(USER_FLAGS_BY_GROUP={'is_superuser': ['alice']})
+        update_user_flags_by_group(backend, None, user)
+        assert User.objects.get(pk=user.pk).is_superuser is True
+
+    def test_superuser_match_by_email(self):
+        user = User.objects.create(username='alice', last_name='foo', first_name='bar', email='alice@example.com')
+        backend = FakeMergedBackend(USER_FLAGS_BY_GROUP={'is_superuser': ['alice@example.com']})
+        update_user_flags_by_group(backend, None, user)
+        assert User.objects.get(pk=user.pk).is_superuser is True
+
+    def test_regex_like_string_does_not_match(self):
+        user = User.objects.create(username='admin-one', last_name='foo', first_name='bar', email='admin-one@example.com')
+        backend = FakeMergedBackend(USER_FLAGS_BY_GROUP={'is_superuser': ['/^admin-.*/']})
+        update_user_flags_by_group(backend, None, user)
+        assert User.objects.get(pk=user.pk).is_superuser is False
+
+    def test_no_match_revokes_existing_flag(self):
+        user = User.objects.create(username='alice', last_name='foo', first_name='bar', email='alice@example.com')
+        user.is_superuser = True
+        user.save()
+        backend = FakeMergedBackend(USER_FLAGS_BY_GROUP={'is_superuser': ['bob@example.com']})
+        update_user_flags_by_group(backend, None, user)
+        assert User.objects.get(pk=user.pk).is_superuser is False
+
+    def test_absent_key_is_not_touched(self):
+        user = User.objects.create(username='alice', last_name='foo', first_name='bar', email='alice@example.com')
+        user.is_superuser = True
+        user.is_system_auditor = True
+        user.save()
+        backend = FakeMergedBackend(USER_FLAGS_BY_GROUP={'is_superuser': ['alice']})
+        update_user_flags_by_group(backend, None, user)
+        user = User.objects.get(pk=user.pk)
+        assert user.is_superuser is True
+        assert user.is_system_auditor is True
+
+    def test_system_auditor_grant_and_revoke(self):
+        user = User.objects.create(username='alice', last_name='foo', first_name='bar', email='alice@example.com')
+        backend = FakeMergedBackend(USER_FLAGS_BY_GROUP={'is_system_auditor': ['alice']})
+        update_user_flags_by_group(backend, None, user)
+        assert User.objects.get(pk=user.pk).is_system_auditor is True
+
+        backend = FakeMergedBackend(USER_FLAGS_BY_GROUP={'is_system_auditor': ['bob@example.com']})
+        update_user_flags_by_group(backend, None, user)
+        assert User.objects.get(pk=user.pk).is_system_auditor is False
+
+    def test_empty_map_is_a_noop(self):
+        user = User.objects.create(username='alice', last_name='foo', first_name='bar', email='alice@example.com')
+        user.is_superuser = True
+        user.save()
+        update_user_flags_by_group(FakeMergedBackend(), None, user)
+        assert User.objects.get(pk=user.pk).is_superuser is True
+
+    def test_no_user_returns_early(self):
+        update_user_flags_by_group(FakeMergedBackend(), None, None)
+
+    def test_unknown_flags_are_ignored(self):
+        user = User.objects.create(username='alice', last_name='foo', first_name='bar', email='alice@example.com')
+        backend = FakeMergedBackend(USER_FLAGS_BY_GROUP={'is_superuser': ['alice'], 'unknown': ['alice']})
+        update_user_flags_by_group(backend, None, user)
+        assert User.objects.get(pk=user.pk).is_superuser is True

@@ -35,6 +35,7 @@ from awx.sso.fields import (
     SAMLUserFlagsAttrField,
     SocialOrganizationMapField,
     SocialTeamMapField,
+    SocialUserFlagsField,
 )
 from awx.main.validators import validate_private_key, validate_certificate
 from awx.sso.validators import validate_ldap_bind_dn, validate_tacacsplus_disallow_nonascii  # noqa
@@ -88,6 +89,21 @@ SOCIAL_AUTH_TEAM_MAP_PLACEHOLDER = collections.OrderedDict(
     ]
 )
 
+SOCIAL_AUTH_USER_FLAGS_BY_GROUP_HELP_TEXT = _('''\
+Mapping of superuser and system auditor flags from social auth accounts.  The
+is_superuser and is_system_auditor keys each accept a list of usernames and
+email addresses.  On login a user that matches an entry for a key is granted
+that flag; users that do not match have the flag removed.  Keys absent from
+the mapping are left untouched.\
+''')
+
+SOCIAL_AUTH_USER_FLAGS_BY_GROUP_PLACEHOLDER = collections.OrderedDict(
+    [
+        ('is_superuser', ['admin@example.com']),
+        ('is_system_auditor', ['auditor@example.com']),
+    ]
+)
+
 ###############################################################################
 # AUTHENTICATION BACKENDS DYNAMIC SETTING
 ###############################################################################
@@ -125,6 +141,18 @@ register(
     category=_('Authentication'),
     category_slug='authentication',
     placeholder=SOCIAL_AUTH_TEAM_MAP_PLACEHOLDER,
+)
+
+register(
+    'SOCIAL_AUTH_USER_FLAGS_BY_GROUP',
+    field_class=SocialUserFlagsField,
+    allow_null=True,
+    default=None,
+    label=_('Social Auth User Flags By Group'),
+    help_text=SOCIAL_AUTH_USER_FLAGS_BY_GROUP_HELP_TEXT,
+    category=_('Authentication'),
+    category_slug='authentication',
+    placeholder=SOCIAL_AUTH_USER_FLAGS_BY_GROUP_PLACEHOLDER,
 )
 
 register(

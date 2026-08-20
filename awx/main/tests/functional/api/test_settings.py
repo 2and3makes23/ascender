@@ -122,6 +122,48 @@ def test_ldap_user_flags_by_group_list(get, patch, admin):
     assert resp.data['AUTH_LDAP_USER_FLAGS_BY_GROUP']['is_superuser'] == expected
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'value',
+    [
+        3.14,
+        'admin@example.com',
+        True,
+        ['admin@example.com', {'a': 1}],
+        ['admin@example.com', True],
+        ['admin@example.com', 123],
+    ],
+)
+def test_social_user_flags_by_group_invalid_value(get, patch, admin, value):
+    url = reverse('api:setting_singleton_detail', kwargs={'category_slug': 'authentication'})
+    patch(url, user=admin, data={'SOCIAL_AUTH_USER_FLAGS_BY_GROUP': {'is_superuser': value}}, expect=400)
+
+
+@pytest.mark.django_db
+def test_social_user_flags_by_group_invalid_flag_key(get, patch, admin):
+    url = reverse('api:setting_singleton_detail', kwargs={'category_slug': 'authentication'})
+    patch(url, user=admin, data={'SOCIAL_AUTH_USER_FLAGS_BY_GROUP': {'junk': ['foo']}}, expect=400)
+
+
+@pytest.mark.django_db
+def test_social_user_flags_by_group_list(get, patch, admin):
+    expected = ['admin@example.com', 'audit-user@example.com']
+    url = reverse('api:setting_singleton_detail', kwargs={'category_slug': 'authentication'})
+    patch(url, user=admin, data={'SOCIAL_AUTH_USER_FLAGS_BY_GROUP': {'is_superuser': expected, 'is_system_auditor': expected}}, expect=200)
+    resp = get(url, user=admin)
+    assert resp.data['SOCIAL_AUTH_USER_FLAGS_BY_GROUP']['is_superuser'] == expected
+    assert resp.data['SOCIAL_AUTH_USER_FLAGS_BY_GROUP']['is_system_auditor'] == expected
+
+
+@pytest.mark.django_db
+def test_social_user_flags_by_group_regex_string_is_literal(get, patch, admin):
+    expected = ['/^admin-.*/i']
+    url = reverse('api:setting_singleton_detail', kwargs={'category_slug': 'authentication'})
+    patch(url, user=admin, data={'SOCIAL_AUTH_USER_FLAGS_BY_GROUP': {'is_superuser': expected}}, expect=200)
+    resp = get(url, user=admin)
+    assert resp.data['SOCIAL_AUTH_USER_FLAGS_BY_GROUP']['is_superuser'] == expected
+
+
 @pytest.mark.parametrize(
     'setting',
     [

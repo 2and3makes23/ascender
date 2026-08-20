@@ -626,6 +626,30 @@ class SocialTeamMapField(fields.DictField):
     child = SocialSingleTeamMapField()
 
 
+class SocialUserFlagsStringField(fields.CharField):
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        return super(SocialUserFlagsStringField, self).to_internal_value(data)
+
+
+class SocialUserFlagsListField(fields.ListField):
+    child = SocialUserFlagsStringField()
+
+
+class SocialUserFlagsField(fields.DictField):
+    default_error_messages = {'invalid_flag': _('Invalid user flag: "{invalid_flag}".')}
+    valid_user_flags = {'is_superuser', 'is_system_auditor'}
+    child = SocialUserFlagsListField()
+
+    def to_internal_value(self, data):
+        data = super(SocialUserFlagsField, self).to_internal_value(data)
+        invalid_flags = set(data.keys()) - self.valid_user_flags
+        if invalid_flags:
+            self.fail('invalid_flag', invalid_flag=list(invalid_flags)[0])
+        return data
+
+
 class SAMLOrgInfoValueField(HybridDictField):
     name = fields.CharField()
     displayname = fields.CharField()

@@ -193,6 +193,39 @@ def update_user_org_team_mappings(backend, details, user=None, *args, **kwargs):
     _update_user_memberships(backend, user)
 
 
+def update_user_flags_by_group(backend, details, user=None, *args, **kwargs):
+    """Set the is_superuser / is_system_auditor flags from
+    SOCIAL_AUTH_USER_FLAGS_BY_GROUP.
+
+    Mirrors AUTH_LDAP_USER_FLAGS_BY_GROUP: the mapping is keyed by the flags
+    is_superuser and is_system_auditor, and each value is a list of usernames
+    and email addresses.  On login the flag is set to True when the user
+    matches an entry and to False when they do not.  Keys absent from the
+    mapping are left untouched, so a flag is only ever cleared once the
+    administrator configures that key.
+    """
+    if not user:
+        return
+
+    flags_map = backend.setting('USER_FLAGS_BY_GROUP') or {}
+
+    changed = False
+    for flag, opts in flags_map.items():
+        if flag not in ('is_superuser', 'is_system_auditor'):
+            continue
+        # remove=False: unmatched expressions yield None, which we treat as
+        # "not a member", so the flag is recomputed (revoked) exactly like
+        # AUTH_LDAP_USER_FLAGS_BY_GROUP does on each login.
+        matched = _update_m2m_from_expression(user, opts, remove=False) is True
+
+        if getattr(user, flag, False) != matched:
+            setattr(user, flag, matched)
+            changed = True
+
+    if changed:
+        user.save()
+
+
 # Kept for compatibility: a custom SOCIAL_AUTH_PIPELINE configured in
 # awx settings (e.g. NON_ROOT settings or an awx-manage shell) may still list
 # these legacy function names explicitly.

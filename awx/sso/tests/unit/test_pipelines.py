@@ -22,9 +22,11 @@ def test_module_loads(lib):
     "pipeline_setting, func_name, expected",
     [
         ("SOCIAL_AUTH_PIPELINE", "update_user_org_team_mappings", True),
+        ("SOCIAL_AUTH_PIPELINE", "update_user_flags_by_group", True),
         ("SOCIAL_AUTH_PIPELINE", "update_user_orgs", False),
         ("SOCIAL_AUTH_PIPELINE", "update_user_teams", False),
         ("SOCIAL_AUTH_SAML_PIPELINE", "update_user_org_team_mappings", False),
+        ("SOCIAL_AUTH_SAML_PIPELINE", "update_user_flags_by_group", False),
     ],
 )
 def test_social_pipeline_uses_merged_step(pipeline_setting, func_name, expected):

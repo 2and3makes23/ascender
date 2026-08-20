@@ -980,6 +980,33 @@
                   }
               }
           },
+          "SOCIAL_AUTH_USER_FLAGS_BY_GROUP": {
+              "type": "nested object",
+              "required": false,
+              "label": "Social Auth User Flags By Group",
+              "help_text": "Mapping of superuser and system auditor flags from social auth accounts.  The is_superuser and is_system_auditor keys each accept a list of usernames and email addresses.  On login a user that matches an entry for a key is granted that flag; users that do not match have the flag removed.  Keys absent from the mapping are left untouched.",
+              "category": "Authentication",
+              "category_slug": "authentication",
+              "placeholder": {
+                  "is_superuser": [
+                      "admin@example.com"
+                  ],
+                  "is_system_auditor": [
+                      "auditor@example.com"
+                  ]
+              },
+              "default": null,
+              "child": {
+                  "type": "nested object",
+                  "required": true,
+                  "read_only": false,
+                  "child": {
+                      "type": "field",
+                      "required": true,
+                      "read_only": false
+                  }
+              }
+          },
           "SOCIAL_AUTH_USER_FIELDS": {
               "type": "list",
               "required": false,

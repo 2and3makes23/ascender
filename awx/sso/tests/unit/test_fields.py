@@ -1,9 +1,17 @@
 import pytest
+import re
 from unittest import mock
 
 from rest_framework.exceptions import ValidationError
 
-from awx.sso.fields import SAMLOrgAttrField, SAMLTeamAttrField, SAMLUserFlagsAttrField, LDAPGroupTypeParamsField, LDAPServerURIField
+from awx.sso.fields import (
+    SAMLOrgAttrField,
+    SAMLTeamAttrField,
+    SAMLUserFlagsAttrField,
+    LDAPGroupTypeParamsField,
+    LDAPServerURIField,
+    SocialUserFlagsField,
+)
 
 
 class TestSAMLOrgAttrField:
@@ -233,3 +241,72 @@ class TestLDAPServerURIField:
         else:
             with pytest.raises(exception):
                 field.run_validators(ldap_uri)
+
+
+class TestSocialUserFlagsField:
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {},
+            {'is_superuser': ['admin@example.com']},
+            {'is_superuser': ['alice', 'bob@example.com']},
+            {'is_superuser': []},
+            {'is_system_auditor': ['auditor@example.com']},
+            {'is_superuser': ['alice'], 'is_system_auditor': ['bob']},
+        ],
+    )
+    def test_internal_value_valid(self, data):
+        field = SocialUserFlagsField()
+        res = field.to_internal_value(data)
+        assert list(res.keys()) == list(data.keys())
+
+    def test_regex_like_string_is_treated_literally(self):
+        field = SocialUserFlagsField()
+        res = field.to_internal_value({'is_superuser': ['/^admin-.*/i']})
+        assert res['is_superuser'] == ['/^admin-.*/i']
+        assert isinstance(res['is_superuser'][0], str)
+        assert not isinstance(res['is_superuser'][0], re.Pattern)
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {'junk': ['foo']},
+            {'is_superuser': ['alice'], 'junk': ['foo']},
+            {'is_superuser': ['alice'], 'is_system_auditor': ['bob'], 'another': ['x']},
+        ],
+    )
+    def test_internal_value_invalid_flag(self, data):
+        field = SocialUserFlagsField()
+        with pytest.raises(ValidationError) as e:
+            field.to_internal_value(data)
+        assert e.value.detail[0].code == 'invalid_flag'
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {'is_superuser': 'admin@example.com'},
+            {'is_superuser': True},
+            {'is_superuser': 1},
+            {'is_superuser': ['alice', True]},
+            {'is_superuser': ['alice', 123]},
+            {'is_superuser': ['alice', {'a': 1}]},
+        ],
+    )
+    def test_internal_value_invalid_value(self, data):
+        field = SocialUserFlagsField()
+        with pytest.raises(ValidationError):
+            field.to_internal_value(data)
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            1,
+            'string',
+            [1],
+            True,
+        ],
+    )
+    def test_internal_value_invalid_type(self, data):
+        field = SocialUserFlagsField()
+        with pytest.raises(ValidationError):
+            field.to_internal_value(data)
