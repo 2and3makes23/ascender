@@ -19,7 +19,14 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.timezone import now
 from rest_framework import serializers
 from ascender.dab.lib.utils.models import get_type_for_model
-from ascender.main.models import Credential, OAuth2RefreshToken, Role, Team
+from ascender.main.models import (
+    Credential,
+    OAuth2RefreshToken,
+    Role,
+    ROLE_SINGLETON_SYSTEM_ADMINISTRATOR,
+    ROLE_SINGLETON_SYSTEM_AUDITOR,
+    Team,
+)
 from ascender.main.models.rbac import RoleAncestorEntry
 from ascender.sso.common import get_external_account
 from ascender.api.serializers.base import (
@@ -384,6 +391,18 @@ class ResourceAccessListElementSerializer(UserSerializer):
             .exclude(id__in=direct_permissive_role_ids)
             .exclude(id__in=direct_team_roles)
             .exclude(id__in=indirect_team_roles)
+        )
+
+        # Display only: hide the system-wide singleton roles from the list of
+        # roles a user holds on the resource. Their membership of the System
+        # Administrator or System Auditor role is unaffected; it is only no
+        # longer shown (and if it was their only role on the resource, the user
+        # is hidden entirely by the view's queryset).
+        indirect_access_roles = indirect_access_roles.exclude(
+            singleton_name__in=[
+                ROLE_SINGLETON_SYSTEM_ADMINISTRATOR,
+                ROLE_SINGLETON_SYSTEM_AUDITOR,
+            ]
         )
 
         ret['summary_fields']['direct_access'] = (

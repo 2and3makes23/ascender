@@ -807,6 +807,12 @@ class ResourceAccessList(ParentMixin, ListAPIView):
         ancestors = set()
         for r in roles:
             ancestors.update(set(r.ancestors.all()))
+        # The system-wide singleton roles (System Administrator, System Auditor)
+        # are ancestors of every resource role, so without this they put every
+        # System Administrator and System Auditor in the access list. Drop them:
+        # a user belongs in an access list through the roles they actually hold
+        # on the resource, not through a system-wide role.
+        ancestors = {a for a in ancestors if a.singleton_name is None}
         return User.objects.filter(roles__in=list(ancestors)).distinct()
 
 
