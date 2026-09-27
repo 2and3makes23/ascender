@@ -63,7 +63,6 @@ from ascender.main.models.rbac import (  # noqa
     role_summary_fields_generator,
     ROLE_SINGLETON_SYSTEM_ADMINISTRATOR,
     ROLE_SINGLETON_SYSTEM_AUDITOR,
-    ROLE_SINGLETONS_HIDDEN_FROM_RESOURCE_ACCESS_LISTS,
 )
 from ascender.main.models.mixins import (  # noqa
     ExecutionEnvironmentMixin,
