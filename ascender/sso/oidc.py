@@ -204,13 +204,31 @@ USER_FLAGS = (
 )
 
 
+def _match_username(user, usernames, remove):
+    """
+    Decide one user flag from the list of usernames a login has to match.
+
+    None means the flag is not managed this way and is left alone, which is
+    what keeps a configuration that only carries trigger rules behaving as it
+    did before the username lists existed.
+    """
+    if usernames is None:
+        return None
+    if user.username in usernames:
+        return True
+    return False if remove else None
+
+
 def update_user_flags(backend, details, user=None, response=None, *args, **kwargs):
     """
     Grant or revoke superuser and system auditor from SOCIAL_AUTH_OIDC_USER_FLAGS.
 
-    A flag without a rule is left alone, so turning this on for auditors does
-    not touch who is a superuser.  With a rule, a user who matches gets the flag,
-    and one who does not loses it unless remove_<flag>s is false.
+    A flag is managed by a trigger rule, a list of usernames, or both.  When
+    both are given the rule is evaluated first and the usernames only decide for
+    a user the rule says nothing about, the same precedence the org and team
+    maps use.  A flag with neither is left alone, so turning this on for
+    auditors does not touch who is a superuser.  A managed user who does not
+    match loses the flag unless remove_<flag>s is false.
     """
     if not user or not is_oidc(backend):
         return
@@ -222,10 +240,11 @@ def update_user_flags(backend, details, user=None, response=None, *args, **kwarg
     save = False
     for flag, attribute in USER_FLAGS:
         triggers = user_flags.get('triggers_{}'.format(flag))
-        if not triggers:
+        usernames = user_flags.get(attribute)
+        if not triggers and usernames is None:
             continue
         remove = bool(user_flags.get('remove_{}s'.format(flag), True))
-        state = identity.resolve(triggers, 'OIDC user flag {}'.format(flag), lambda: None, remove)
+        state = identity.resolve(triggers, 'OIDC user flag {}'.format(flag), lambda: _match_username(user, usernames, remove), remove)
         if state is None or state == bool(getattr(user, attribute)):
             continue
         logger.info("%s %s %s from the OIDC user flags", 'Granting' if state else 'Revoking', flag, user.username)

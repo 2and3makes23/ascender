@@ -442,7 +442,7 @@ def test_oidc_rules_round_trip(get, patch, admin):
         'SOCIAL_AUTH_OIDC_LOGIN_TRIGGERS': rule,
         'SOCIAL_AUTH_OIDC_ORGANIZATION_MAP': {'Default': {'triggers_admins': rule, 'remove_admins': True}},
         'SOCIAL_AUTH_OIDC_TEAM_MAP': {'Operators': {'organization': 'Default', 'triggers': rule}},
-        'SOCIAL_AUTH_OIDC_USER_FLAGS': {'triggers_superuser': rule, 'remove_superusers': False},
+        'SOCIAL_AUTH_OIDC_USER_FLAGS': {'triggers_superuser': rule, 'is_superuser': ['alice'], 'remove_superusers': False},
         'SOCIAL_AUTH_OIDC_LOGOUT_FROM_IDP': True,
     }
     patch(url, user=admin, data=data, expect=200)

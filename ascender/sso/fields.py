@@ -709,6 +709,8 @@ class OIDCTeamMapField(fields.DictField):
 class OIDCUserFlagsField(HybridDictField):
     triggers_superuser = TriggerRuleField(allow_null=True, required=False)
     triggers_system_auditor = TriggerRuleField(allow_null=True, required=False)
+    is_superuser = fields.StringListField(required=False, allow_null=True)
+    is_system_auditor = fields.StringListField(required=False, allow_null=True)
     remove_superusers = fields.BooleanField(required=False)
     remove_system_auditors = fields.BooleanField(required=False)
 

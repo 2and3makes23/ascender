@@ -444,6 +444,8 @@ class TestOIDCUserFlagsField:
         data = {
             'triggers_superuser': {'groups': {'has_or': ['ascender-superusers']}},
             'triggers_system_auditor': {'attributes': {'department': {'equals': 'Audit'}}},
+            'is_superuser': ['ascender-superusers', 'admin'],
+            'is_system_auditor': ['auditor'],
             'remove_superusers': False,
             'remove_system_auditors': True,
         }
@@ -452,11 +454,24 @@ class TestOIDCUserFlagsField:
     @pytest.mark.parametrize(
         "data",
         [
-            {'is_superuser': ['ascender-superusers']},
             {'triggers_superuser': {'groups': {'has_or': []}}},
             {'triggers_superuser': {'always': {}, 'never': {}}},
         ],
     )
     def test_invalid(self, data):
+        with pytest.raises(ValidationError):
+            OIDCUserFlagsField().to_internal_value(data)
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            # The flag values are username lists, not the booleans the org and
+            # team maps accept, and not a bare string.
+            {'is_superuser': True},
+            {'is_superuser': 'admin'},
+            {'is_system_auditor': False},
+        ],
+    )
+    def test_invalid_username_list(self, data):
         with pytest.raises(ValidationError):
             OIDCUserFlagsField().to_internal_value(data)

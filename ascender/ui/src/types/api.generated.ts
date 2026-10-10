@@ -13043,7 +13043,7 @@ export interface components {
       } | null;
       /**
        * OIDC User Flags
-       * @description Trigger rules that make an OIDC user a superuser (triggers_superuser) or a system auditor (triggers_system_auditor). A user who stops matching loses the flag at their next login unless remove_superusers or remove_system_auditors is false. A flag without a rule is left alone.
+       * @description Trigger rules and username lists that make an OIDC user a superuser (triggers_superuser, is_superuser) or a system auditor (triggers_system_auditor, is_system_auditor). When both are given the rule is evaluated first and the usernames only decide for a user the rule says nothing about. A managed user who stops matching loses the flag at their next login unless remove_superusers or remove_system_auditors is false. A flag without a rule or username list is left alone. Usernames are the exact Ascender usernames.
        */
       SOCIAL_AUTH_OIDC_USER_FLAGS?: {
         [key: string]: string;
@@ -16198,7 +16198,7 @@ export interface components {
       } | null;
       /**
        * OIDC User Flags
-       * @description Trigger rules that make an OIDC user a superuser (triggers_superuser) or a system auditor (triggers_system_auditor). A user who stops matching loses the flag at their next login unless remove_superusers or remove_system_auditors is false. A flag without a rule is left alone.
+       * @description Trigger rules and username lists that make an OIDC user a superuser (triggers_superuser, is_superuser) or a system auditor (triggers_system_auditor, is_system_auditor). When both are given the rule is evaluated first and the usernames only decide for a user the rule says nothing about. A managed user who stops matching loses the flag at their next login unless remove_superusers or remove_system_auditors is false. A flag without a rule or username list is left alone. Usernames are the exact Ascender usernames.
        */
       SOCIAL_AUTH_OIDC_USER_FLAGS?: {
         [key: string]: string;
@@ -18233,7 +18233,7 @@ export interface components {
       } | null;
       /**
        * OIDC User Flags
-       * @description Trigger rules that make an OIDC user a superuser (triggers_superuser) or a system auditor (triggers_system_auditor). A user who stops matching loses the flag at their next login unless remove_superusers or remove_system_auditors is false. A flag without a rule is left alone.
+       * @description Trigger rules and username lists that make an OIDC user a superuser (triggers_superuser, is_superuser) or a system auditor (triggers_system_auditor, is_system_auditor). When both are given the rule is evaluated first and the usernames only decide for a user the rule says nothing about. A managed user who stops matching loses the flag at their next login unless remove_superusers or remove_system_auditors is false. A flag without a rule or username list is left alone. Usernames are the exact Ascender usernames.
        */
       SOCIAL_AUTH_OIDC_USER_FLAGS?: {
         [key: string]: string;
