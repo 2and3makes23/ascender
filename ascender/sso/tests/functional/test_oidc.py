@@ -201,56 +201,6 @@ class TestUserFlags:
         user.refresh_from_db()
         assert user.is_superuser is False
 
-    def test_a_username_in_the_list_becomes_superuser(self, settings, user):
-        settings.SOCIAL_AUTH_OIDC_USER_FLAGS = {'is_superuser': ['alice']}
-        update_user_flags(oidc_backend(), {}, user=user, response={})
-        user.refresh_from_db()
-        assert user.is_superuser is True
-
-    def test_a_username_not_in_the_list_loses_it(self, settings, user):
-        user.is_superuser = True
-        user.save()
-        settings.SOCIAL_AUTH_OIDC_USER_FLAGS = {'is_superuser': ['bob']}
-        update_user_flags(oidc_backend(), {}, user=user, response={})
-        user.refresh_from_db()
-        assert user.is_superuser is False
-
-    def test_remove_false_keeps_a_username_not_in_the_list(self, settings, user):
-        user.is_superuser = True
-        user.save()
-        settings.SOCIAL_AUTH_OIDC_USER_FLAGS = {'is_superuser': ['bob'], 'remove_superusers': False}
-        update_user_flags(oidc_backend(), {}, user=user, response={})
-        user.refresh_from_db()
-        assert user.is_superuser is True
-
-    def test_a_username_list_grants_a_system_auditor(self, settings, user):
-        settings.SOCIAL_AUTH_OIDC_USER_FLAGS = {'is_system_auditor': ['alice']}
-        update_user_flags(oidc_backend(), {}, user=user, response={})
-        assert User.objects.get(pk=user.pk).is_system_auditor is True
-
-    def test_a_trigger_rule_wins_over_the_username_list(self, settings, user):
-        # alice is not in the list, but the rule matches, so the flag is granted.
-        settings.SOCIAL_AUTH_OIDC_USER_FLAGS = {'triggers_superuser': GROUP_RULE, 'is_superuser': ['bob']}
-        update_user_flags(oidc_backend(groups=['ascender-admins']), {}, user=user, response={})
-        user.refresh_from_db()
-        assert user.is_superuser is True
-
-    def test_the_username_list_decides_when_the_rule_skips(self, settings, user):
-        settings.SOCIAL_AUTH_OIDC_USER_FLAGS = {'triggers_superuser': GROUP_RULE, 'is_superuser': ['alice']}
-        update_user_flags(oidc_backend(groups=[]), {}, user=user, response={})
-        user.refresh_from_db()
-        assert user.is_superuser is True
-
-    def test_a_username_list_with_no_rule_is_managed(self, settings, user):
-        # No trigger at all: the list alone manages the flag, so a user it does
-        # not name loses it.
-        user.is_superuser = True
-        user.save()
-        settings.SOCIAL_AUTH_OIDC_USER_FLAGS = {'is_superuser': ['bob']}
-        update_user_flags(oidc_backend(), {}, user=user, response={})
-        user.refresh_from_db()
-        assert user.is_superuser is False
-
 
 @pytest.mark.django_db
 class TestMaps:

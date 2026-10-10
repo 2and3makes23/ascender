@@ -138,37 +138,20 @@ shared one no longer applies to OIDC.
 
 ## Superusers and system auditors
 
-`SOCIAL_AUTH_OIDC_USER_FLAGS` hands out the two system wide flags. Each flag
-can be driven by a trigger rule, by a list of usernames, or by both:
+`SOCIAL_AUTH_OIDC_USER_FLAGS` hands out the two system wide flags:
 
 ```json
 {
   "triggers_superuser": {"groups": {"has_or": ["ascender-superusers"]}},
-  "is_superuser": ["fernando.roca"],
   "triggers_system_auditor": {"groups": {"has_or": ["ascender-auditors"]}},
-  "is_system_auditor": ["auditor"],
   "remove_superusers": true,
   "remove_system_auditors": true
 }
 ```
 
-When both are given for a flag, the trigger rule is evaluated first and the
-usernames only decide for a user the rule says nothing about, the same
-precedence the organization and team maps use. `is_superuser` and
-`is_system_auditor` are lists of usernames, the Ascender usernames, and are
-matched exactly and case-sensitively; they do not take the booleans,
-emails or regular expressions the organization and team maps do. Use the
-trigger rules for matching on the provider's claims.
-
-A flag with neither a rule nor a username list is left alone. Once a flag is
-managed, a user who does not match loses it at their next login, unless the
-matching `remove_` key is false.
-
-Usernames are the Ascender usernames, which
-`SOCIAL_AUTH_OIDC_USERNAME_STRIP_DOMAIN` may have shortened to the part before
-the `@` when the account was created, and an existing account keeps the name it
-had. List a user by the name Ascender shows, not by the claim the provider
-sent.
+A flag without a rule is left alone. With a rule, a user who matches gets the
+flag and a user who does not loses it at their next login, unless the matching
+`remove_` key is false.
 
 Keep a local superuser that does not log in through OIDC. The social auth
 pipeline links an OIDC identity to an existing account with the same email, and

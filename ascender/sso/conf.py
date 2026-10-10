@@ -1509,23 +1509,17 @@ register(
     default=None,
     label=_('OIDC User Flags'),
     help_text=_(
-        'Trigger rules and username lists that make an OIDC user a superuser '
-        '(triggers_superuser, is_superuser) or a system auditor '
-        '(triggers_system_auditor, is_system_auditor). When both are given the '
-        'rule is evaluated first and the usernames only decide for a user the '
-        'rule says nothing about. A managed user who stops matching loses the '
-        'flag at their next login unless remove_superusers or '
-        'remove_system_auditors is false. A flag without a rule or username '
-        'list is left alone. Usernames are the exact Ascender usernames.'
+        'Trigger rules that make an OIDC user a superuser (triggers_superuser) or '
+        'a system auditor (triggers_system_auditor). A user who stops matching '
+        'loses the flag at their next login unless remove_superusers or '
+        'remove_system_auditors is false. A flag without a rule is left alone.'
     ),
     category=_('Generic OIDC'),
     category_slug='oidc',
     placeholder=collections.OrderedDict(
         [
             ('triggers_superuser', collections.OrderedDict([('groups', collections.OrderedDict([('has_or', ['ascender-superusers'])]))])),
-            ('is_superuser', ['admin']),
             ('triggers_system_auditor', collections.OrderedDict([('groups', collections.OrderedDict([('has_or', ['ascender-auditors'])]))])),
-            ('is_system_auditor', ['auditor']),
             ('remove_superusers', True),
             ('remove_system_auditors', True),
         ]
